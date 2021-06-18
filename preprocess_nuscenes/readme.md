@@ -1,0 +1,2 @@
+1. Run preprocess.py, it will generate a .npy file for the sequences and transformations
+2. It will write the transformation data in the format of oxford robot car. You may need to change the nuScenes_odom.py for copying image files
