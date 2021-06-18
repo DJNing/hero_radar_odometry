@@ -8,7 +8,7 @@ from utils.utils import computeMedianError, computeKittiMetrics, get_transform2
 from utils.losses import supervised_loss, unsupervised_loss
 from utils.utils import get_T_ba
 from utils.vis import draw_batch, plot_sequences, draw_batch_steam
-
+import ipdb
 class MonitorBase(object):
     """This base class is used for monitoring the training process and executing validation / visualization."""
     def __init__(self, model, valid_loader, config):
@@ -39,8 +39,11 @@ class MonitorBase(object):
         self.current_time = time()
         valid_metric = None
 
+        t_loss = dict_loss['t_loss'].detach().cpu().item()
+        R_loss = dict_loss['R_loss'].detach().cpu().item()
+
         if self.counter % self.config['print_rate'] == 0:
-            print('Batch: {}\t\t| Loss: {}\t| Step time: {}'.format(self.counter, loss.detach().cpu().item(), self.dt))
+            print('Batch: {}\t| Loss: {}\t| t_loss: {}\t| R_loss: {}\t| Step time: {}'.format(self.counter, loss.detach().cpu().item(), t_loss, R_loss, self.dt))
 
         if self.counter % self.config['log_rate'] == 0:
             self.writer.add_scalar('train/loss', loss.detach().cpu().item(), self.counter)
@@ -104,6 +107,8 @@ class SVDMonitor(MonitorBase):
 
         results = computeMedianError(T_gt, T_pred)
         t_err, r_err = computeKittiMetrics(T_gt, T_pred, self.seq_lens)
+
+        print('t_err: {}\t| r_err: {}\t'.format(t_err, r_err))
 
         self.writer.add_scalar('val/loss', valid_loss, self.counter)
         for loss_name in aux_losses:

@@ -5,9 +5,11 @@
 # See https://docs.docker.com/engine/reference/builder/
 # for more information.
 #
-FROM nvcr.io/nvidia/cuda:10.1-cudnn7-runtime
+# FROM nvcr.io/nvidia/cuda:10.1-cudnn7-runtime
+FROM nvcr.io/nvidia/cuda:11.1-cudnn8-runtime
 
 # python
+ENV DEBIAN_FRONTEND noninteractive
 RUN apt update
 RUN apt upgrade -y --no-install-recommends
 RUN apt-get update
@@ -16,13 +18,15 @@ RUN apt-get install gcc g++ python3 python3-pip python3-dev libglib2.0-0 libgl1-
 # Install pip packages
 RUN pip3 install --upgrade setuptools
 RUN pip3 install --upgrade pip
-RUN pip3 install torch==1.7.1+cu101 torchvision==0.8.2+cu101 -f https://download.pytorch.org/whl/torch_stable.html
+# RUN pip3 install torch==1.7.1+cu101 torchvision==0.8.2+cu101 -f https://download.pytorch.org/whl/torch_stable.html
+RUN pip3 install torch==1.7.1+cu110 torchvision==0.8.2+cu110 torchaudio==0.7.2 -f https://download.pytorch.org/whl/torch_stable.html
+
 RUN pip3 install tensorboard
 RUN pip3 install -Iv tensorboardx==2.1 matplotlib==3.2.2 opencv-python==4.5.1.48
 RUN pip3 install numpy==1.19.4 sklearn Pillow==8.0
 
 # git and wget
-RUN apt-get udpate
+# RUN apt-get udpate
 RUN apt install git wget -y --no-install-recommends
 
 # cmake
@@ -82,3 +86,4 @@ RUN cd /workspace && \
  cmake -D CMAKE_BUILD_TYPE=RELEASE -D CMAKE_INSTALL_PREFIX=/usr/local -D OPENCV_GENERATE_PKGCONFIG=ON .. && \
  make && \
  make install
+

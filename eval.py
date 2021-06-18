@@ -4,12 +4,12 @@ from time import time
 import pickle
 import numpy as np
 import torch
-
+import ipdb
 from datasets.oxford import get_dataloaders
 from datasets.boreas import get_dataloaders_boreas
 from networks.under_the_radar import UnderTheRadar
-from networks.hero import HERO
-from utils.utils import computeMedianError, computeKittiMetrics, save_in_yeti_format, get_T_ba, load_icra21_results
+# from networks.hero import HERO
+from utils.utils import computeMedianError, computeKittiMetrics, save_in_yeti_format, get_T_ba, load_icra21_results, get_transform2
 from utils.vis import plot_sequences, draw_matches
 
 torch.backends.cudnn.benchmark = False
@@ -35,9 +35,9 @@ if __name__ == '__main__':
     seq_nums = config['test_split']
     if config['model'] == 'UnderTheRadar':
         model = UnderTheRadar(config).to(config['gpuid'])
-    elif config['model'] == 'HERO':
-        model = HERO(config).to(config['gpuid'])
-        model.solver.sliding_flag = True
+    # elif config['model'] == 'HERO':
+    #     model = HERO(config).to(config['gpuid'])
+    #     model.solver.sliding_flag = True
     assert(args.pretrain is not None)
     checkpoint = torch.load(args.pretrain, map_location=torch.device(config['gpuid']))
     failed = False
@@ -62,7 +62,7 @@ if __name__ == '__main__':
         T_pred = []
         timestamps = []
         config['test_split'] = [seq_num]
-        if config['dataset'] == 'oxford':
+        if config['dataset'] == 'nuScenes':
             _, _, test_loader = get_dataloaders(config)
         elif config['dataset'] == 'boreas':
             _, _, test_loader = get_dataloaders_boreas(config)
@@ -70,34 +70,50 @@ if __name__ == '__main__':
         print(seq_lens)
         seq_names = test_loader.dataset.sequences
         print('Evaluating sequence: {} : {}'.format(seq_num, seq_names[0]))
-        nkpts = []
+        # nkpts = []
         for batchi, batch in enumerate(test_loader):
             ts = time()
             if (batchi + 1) % config['print_rate'] == 0:
                 print('Eval Batch {} / {}: {:.2}s'.format(batchi, len(test_loader), np.mean(time_used[-config['print_rate']:])))
             with torch.no_grad():
                 try:
+                    # ipdb.set_trace()
+                    # print(batch['data'].size())
                     out = model(batch)
-                    y = torch.nonzero(out['keypoint_ints'][0] > 0.5, as_tuple=False).squeeze()
-                    nkpts.append(len(y))
+                    # print(out['R'].size())
+                    # ipdb.set_trace()
+                    # y = torch.nonzero(out['keypoint_ints'][0] > 0.5, as_tuple=False).squeeze()
+                    # nkpts.append(len(y))
+                    # print(out)
                 except RuntimeError as e:
                     print(e)
                     continue
-            if batchi == len(test_loader) - 1:
-                # append entire window
-                for w in range(batch['T_21'].size(0)-1):
-                    T_gt.append(batch['T_21'][w].numpy().squeeze())
-                    T_pred.append(get_T_ba(out, a=w, b=w+1))
-                    timestamps.append(batch['t_ref'][w].numpy().squeeze())
-            else:
-                # append only the back of window
-                w = 0
-                T_gt.append(batch['T_21'][w].numpy().squeeze())
-                T_pred.append(get_T_ba(out, a=w, b=w+1))
-                #
-                # print('T_gt:\n{}'.format(T_gt[-1]))
-                # print('T_pred:\n{}'.format(T_pred[-1]))
-                timestamps.append(batch['t_ref'][w].numpy().squeeze())
+            # if batchi == len(test_loader) - 1:
+            #     ## remove the last one 
+            #     ## append entire window
+            #     # for w in range(batch['T_21'].size(0)-1):
+            #     #     T_gt.append(batch['T_21'][w].numpy().squeeze())
+            #     #     try:
+            #     #         T_pred.append(get_T_ba(out, a=w, b=w+1))
+            #     #         ipdb.set_trace()
+            #     #         print(w) 
+            #     #     except IndexError:
+            #     #         print(w) 
+            #     #         ipdb.set_trace()
+            #     #     timestamps.append(batch['t_ref'][w].numpy().squeeze())
+            #     pass
+            # else:
+            #     # append only the back of window
+            # w = 0
+            # T_gt.append(batch['T_21'][w].numpy().squeeze())
+            # T_pred_temp = get_T_ba(out, a=w, b=w+1)
+            # T_pred.append(T_pred_temp)
+            # timestamps.append(batch['t_ref'][w].numpy().squeeze())
+            T_gt.append(batch['T_21'][0].numpy().squeeze())
+            
+            R_pred_ = out['R'][0].detach().cpu().numpy().squeeze()
+            t_pred_ = out['t'][0].detach().cpu().numpy().squeeze()
+            T_pred.append(get_transform2(R_pred_, t_pred_))
             #
             # if batchi == 86:
             #    draw_matches(batch, out, config, model.solver.solver_cpp)
@@ -105,14 +121,19 @@ if __name__ == '__main__':
         T_gt_.extend(T_gt)
         T_pred_.extend(T_pred)
         time_used_.extend(time_used)
+        
+        # print(T_pred)
+        # ipdb.set_trace()
         t_err, r_err = computeKittiMetrics(T_gt, T_pred, [len(T_gt)])
+        if t_err + r_err == 0:
+            continue
         print('SEQ: {} : {}'.format(seq_num, seq_names[0]))
         print('KITTI t_err: {} %'.format(t_err))
         print('KITTI r_err: {} deg/m'.format(r_err))
         t_errs.append(t_err)
         r_errs.append(r_err)
-        save_in_yeti_format(T_gt, T_pred, timestamps, [len(T_gt)], seq_names, root)
-        pickle.dump([T_gt, T_pred, timestamps], open(root + 'odom' + seq_names[0] + '.obj', 'wb'))
+        # save_in_yeti_format(T_gt, T_pred, timestamps, [len(T_gt)], seq_names, root)
+        # pickle.dump([T_gt, T_pred, timestamps], open(root + 'odom' + seq_names[0] + '.obj', 'wb'))
         T_icra = None
         if config['dataset'] == 'oxford':
             if config['compare_yeti']:
@@ -122,8 +143,8 @@ if __name__ == '__main__':
 
     print('time_used: {}'.format(sum(time_used_) / len(time_used_)))
     results = computeMedianError(T_gt_, T_pred_)
-    with open('errs.obj', 'wb') as f:
-        pickle.dump([nkpts, results[-2], results[-1]], f)
+    # with open('errs.obj', 'wb') as f:
+    #     pickle.dump([nkpts, results[-2], results[-1]], f)
     print('dt: {} sigma_dt: {} dr: {} sigma_dr: {}'.format(results[0], results[1], results[2], results[3]))
 
     t_err = np.mean(t_errs)

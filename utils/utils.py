@@ -2,7 +2,7 @@ import pickle
 import numpy as np
 import torch
 import torch.nn.functional as F
-
+import ipdb
 def get_inverse_tf(T):
     """Returns the inverse of a given 4x4 homogeneous transform.
     Args:
@@ -247,9 +247,10 @@ def calcSequenceErrors(poses_gt, poses_pred):
     Returns:
         err (List[Tuple]) each entry in list is [first_frame, r_err, t_err, length, speed]
     """
-    lengths = [100, 200, 300, 400, 500, 600, 700, 800]
+    # lengths = [100, 200, 300, 400, 500, 600, 700, 800]
+    lengths = [10, 20, 30, 40, 50, 60, 70, 80]
     err = []
-    step_size = 4  # Every second
+    step_size = 1  # Every second
     # Pre-compute distances from ground truth as reference
     dist = trajectoryDistances(poses_gt)
 
@@ -293,6 +294,8 @@ def computeKittiMetrics(T_gt, T_pred, seq_lens):
         t_err: Average KITTI Translation ERROR (%)
         r_err: Average KITTI Rotation Error (deg / m)
     """
+    # due to the sampler used in the dataloader, the len(dataloader) != sum(seq_lens)
+    # thus, this function needs to rewrite
     seq_indices = []
     idx = 0
     for s in seq_lens:
@@ -306,18 +309,26 @@ def computeKittiMetrics(T_gt, T_pred, seq_lens):
         poses_pred = []
         for i in indices:
             T_gt_ = np.matmul(T_gt[i], T_gt_)
+            if T_pred[i][0,0] == 0:
+                print('invalid prediction')
             T_pred_ = np.matmul(T_pred[i], T_pred_)
             enforce_orthog(T_gt_)
             enforce_orthog(T_pred_)
             poses_gt.append(T_gt_)
             poses_pred.append(T_pred_)
         err = calcSequenceErrors(poses_gt, poses_pred)
+        if len(err) == 0:
+            continue
         t_err, r_err = getStats(err)
         err_list.append([t_err, r_err])
     err_list = np.asarray(err_list)
     avg = np.mean(err_list, axis=0)
-    t_err = avg[0]
-    r_err = avg[1]
+    if err_list.size == 0:
+        t_err = 0
+        r_err = 0
+    else:
+        t_err = avg[0]
+        r_err = avg[1]
     return t_err * 100, r_err * 180 / np.pi
 
 def saveKittiErrors(err, fname):
@@ -462,11 +473,11 @@ def get_T_ba(out, a, b):
         np.ndarray: 4x4 transformation matrix T_ba from a to b
     """
     T_b0 = np.eye(4)
-    T_b0[:3, :3] = out['R'][0, b].detach().cpu().numpy()
-    T_b0[:3, 3:4] = out['t'][0, b].detach().cpu().numpy()
+    T_b0[:3, :3] = out['R'][b].detach().cpu().numpy()
+    T_b0[:3, 3:4] = out['t'][b].detach().cpu().numpy()
     T_a0 = np.eye(4)
-    T_a0[:3, :3] = out['R'][0, a].detach().cpu().numpy()
-    T_a0[:3, 3:4] = out['t'][0, a].detach().cpu().numpy()
+    T_a0[:3, :3] = out['R'][a].detach().cpu().numpy()
+    T_a0[:3, 3:4] = out['t'][a].detach().cpu().numpy()
     return np.matmul(T_b0, get_inverse_tf(T_a0))
 
 def convert_to_weight_matrix(w, window_id, T_aug=[]):

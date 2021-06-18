@@ -11,8 +11,8 @@ class UNet(torch.nn.Module):
         self.score_sigmoid = config['networks']['unet']['score_sigmoid']
         # check for steam 2x2 weight matrix setting
         outc_score_dim = 1
-        if 'weight_matrix' in config['steam']:
-            outc_score_dim = 3 if config['steam']['weight_matrix'] is True else 1
+        # if 'weight_matrix' in config['steam']:
+        #     outc_score_dim = 3 if config['steam']['weight_matrix'] is True else 1
         # down
         input_channels = 1
         self.inc = DoubleConv(input_channels, first_feature_dimension)
@@ -45,7 +45,6 @@ class UNet(torch.nn.Module):
             descriptors (torch.tensor): (b*w,C,H,W)
         """
         _, _, height, width = x.size()
-
         x1 = self.inc(x)
         x2 = self.down1(x1)
         x3 = self.down2(x2)

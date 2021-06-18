@@ -32,6 +32,11 @@ def augmentBatch(batch, config):
     batch['data'] = torch.from_numpy(data)
     batch['mask'] = torch.from_numpy(mask > 0.5).type(batch['data'].dtype)    # make into a binary mask
     batch['T_21'] = torch.from_numpy(T_21)
+
+    batch['data'] = batch['data'].type(torch.FloatTensor)
+    batch['mask'] = batch['mask'].type(torch.FloatTensor)
+    batch['T_21'] = batch['T_21'].type(torch.FloatTensor)
+
     return batch
 
 def augmentBatch2(batch, config):
