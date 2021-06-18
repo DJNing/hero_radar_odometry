@@ -1,0 +1,1 @@
+python3 /workspace/hero_radar_odometry/eval.py --pretrain /workspace/under_the_radar/lidar_log/latest.pt --config /workspace/hero_radar_odometry/config/nuScenes.json
