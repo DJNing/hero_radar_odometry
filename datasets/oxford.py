@@ -2,6 +2,7 @@
     PyTorch dataset class for the Oxford Radar Robotcar Dataset.
     Authors: Keenan Burnett
 """
+from glob import glob
 import os
 import torch
 import numpy as np
@@ -9,8 +10,9 @@ from torch.utils.data import Dataset, DataLoader
 from datasets.custom_sampler import RandomWindowBatchSampler, SequentialWindowBatchSampler
 from datasets.radar import load_radar, radar_polar_to_cartesian
 from datasets.interpolate_poses import interpolate_ins_poses
-from utils.utils import get_inverse_tf
+from utils.utils import get_inverse_tf, get_transform
 import cv2
+from pathlib import Path
 
 import ipdb
 
@@ -89,7 +91,7 @@ class OxfordDataset(Dataset):
         self.sequences = self.get_sequences_split(sequences, split)
         self.seq_idx_range = {}
         self.frames = []
-        self.seq_lens = []
+        self.seq_lens = [] # list of int
         for seq in self.sequences:
             seq_path = os.path.join(self.data_dir, seq)
             seq_frames = get_frames(seq_path + '/radar/')
@@ -308,6 +310,75 @@ class nuScenesDataset(OxfordDataset):
         # need mask for data augmentation, since our input is binary, mask == data
         return {'data': data, 'mask': data, 'T_21': T_21, 't_ref':t_ref}
 
+class medicalDataset(Dataset):
+    def __init__(self, config, split='train') -> None:
+        self.config = config
+        self.data_dir = Path(config['data_dir'])
+        self.frames = glob(str(self.data_dir / '*.png'))
+        self.split = split
+        split_ratio = [0.65, 0.15, 0.2]
+        if split.lower() == 'train':
+            start_idx = 0
+            end_idx = int(len(self.frames) * split_ratio[0])
+        elif split.lower() == 'validation':
+            start_idx = int(len(self.frames) * split_ratio[0])
+            end_idx = int(len(self.frames) * (split_ratio[0] + split_ratio[1]))
+        elif split.lower() == 'test':
+            start_idx = int(len(self.frames) * (split_ratio[0] + split_ratio[1]))
+            end_idx = int(len(self.frames) * (split_ratio[1] + split_ratio[2]))
+        else:
+            raise RuntimeError('split %s not implemented' % split)
+        self.window_size = config['window_size']
+        self.frames = self.frames[start_idx:end_idx]
+        self.seq_lens = [len(self.frames)]
+        self.sequences = ['00']
+
+    def __len__(self):
+        return len(self.frames)
+
+    @staticmethod
+    def get_skew(x):
+        return np.array([[0, -x[2], x[1]],
+                        [x[2], 0, -x[0]],
+                        [-x[1], x[0], 0]])
+
+    def augment_image(self, img):
+        rot_max = self.config['augmentation']['rot_max']
+        tr_max = self.config['augmentation']['tr_max'] # assuming this comes with quantity as pixel
+        rot = np.random.uniform(-rot_max, rot_max)
+        tr_x = np.random.uniform(-tr_max, tr_max)
+        tr_y = np.random.uniform(-tr_max, tr_max)
+        T = get_transform(tr_x, tr_y, rot)
+        # T_tr = get_transform(tr_x, tr_y, 0)
+        _, H, W = img.shape
+        # img_rot = 
+        M = cv2.getRotationMatrix2D((W / 2, H / 2), rot * 180 / np.pi, 1.0)
+        aug_img = cv2.warpAffine(img[0,:,:], M, (W, H), flags=cv2.INTER_CUBIC).reshape(1, H, W)
+        return aug_img, T
+
+    def __getitem__(self, idx):
+        base_img = cv2.imread(self.frames[idx])
+        base_img = cv2.cvtColor(base_img, cv2.COLOR_BGR2GRAY)
+        base_img = np.expand_dims(base_img, 0) # [1, h, w]
+        img_list = [base_img]
+        T_list = []
+        cur_img = base_img
+        # generate 
+        for i in range(self.window_size):
+            temp_img, temp_T = self.augment_image(cur_img)
+            temp_T = np.expand_dims(temp_T, 0)
+            img_list += [temp_img]
+            T_list += [temp_T]
+            cur_img = temp_img
+        # T_list += [temp_T]
+        img_list = img_list[:-1]
+        batch_img = np.concatenate(img_list, axis=0)
+        batch_img = torch.from_numpy(batch_img).type(torch.FloatTensor)
+        batch_T = np.concatenate(T_list, axis=0)
+        batch_T = torch.from_numpy(batch_T).type(torch.FloatTensor)
+        return {'data': batch_img, 'mask':[], 'T_21':batch_T, 't_ref':[]}
+        
+
 
 def get_dataloaders(config):
     """Returns the dataloaders for training models in pytorch.
@@ -343,3 +414,16 @@ def get_dataloaders(config):
     new_seq_lens = [x - window_size + 1 for x in temp_seq_lens]
     test_loader.dataset.seq_lens = new_seq_lens
     return train_loader, valid_loader, test_loader
+
+def get_medical_loader(config):
+    vconfig = dict(config)
+    vconfig['batch_size'] = 1
+    train_dataset = medicalDataset(config, 'train')
+    valid_dataset = medicalDataset(vconfig, 'validation')
+    test_dataset = medicalDataset(vconfig, 'test')
+
+    train_loder = DataLoader(train_dataset, num_workers=config['num_workers'])
+    valid_loder = DataLoader(valid_dataset, num_workers=config['num_workers'])
+    test_loder = DataLoader(test_dataset, num_workers=config['num_workers'])
+
+    return train_loder, valid_loder, test_loder

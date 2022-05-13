@@ -39,6 +39,25 @@ def augmentBatch(batch, config):
 
     return batch
 
+def format_medical(batch, config):
+    data = batch['data'].numpy() # [B, ws*C, H, W]
+    T_21 = batch['T_21'].numpy() # [B, ws, 4, 4]
+    B, ws, _, _ = T_21.shape
+    data_list = []
+    T_21_list = []
+    for i in range(B):
+        for j in range(ws):
+            data_list += [data[i:i+1, j:j+1, :, :]]
+            T_21_list += [T_21[i:i+1, j, :, :]]
+        
+    formated_data = np.concatenate(data_list, axis=0) # [B*ws, C, H, W]
+    formated_T21 = np.concatenate(T_21_list, axis=0) # [B*ws, 4, 4]
+    batch['data'] = torch.from_numpy(formated_data)
+    batch['T_21'] = torch.from_numpy(formated_T21)
+    return batch
+
+
+
 def augmentBatch2(batch, config):
     """Rotates the cartesian radar image by a random amount, does NOT adjust ground truth transform.
         The keypoints must be unrotated later using the T_aug transform stored in the batch dict.

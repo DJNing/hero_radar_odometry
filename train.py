@@ -4,15 +4,16 @@ import json
 import torch
 import numpy as np
 import sys
-from datasets.oxford import get_dataloaders
+from datasets.oxford import get_dataloaders, get_medical_loader
 from datasets.boreas import get_dataloaders_boreas
 from networks.under_the_radar import UnderTheRadar
 # from networks.hero import HERO
 from utils.utils import get_lr
 from utils.losses import supervised_loss, unsupervised_loss
 from utils.monitor import SVDMonitor, SteamMonitor
-from datasets.transforms import augmentBatch, augmentBatch2, augmentBatch3
+from datasets.transforms import augmentBatch, augmentBatch2, augmentBatch3, format_medical
 import ipdb
+from pathlib import Path
 torch.backends.cudnn.benchmark = False
 torch.backends.cudnn.enabled = True
 torch.backends.cudnn.deterministic = True
@@ -30,14 +31,16 @@ if __name__ == '__main__':
     args = parser.parse_args()
     with open(args.config) as f:
         config = json.load(f)
-
+    is_medical = False
     if config['dataset'] == 'oxford':
         train_loader, valid_loader, _ = get_dataloaders(config)
     elif config['dataset'] == 'nuScenes':
         train_loader, valid_loader, _ = get_dataloaders(config)
     elif config['dataset'] == 'boreas':
         train_loader, valid_loader, _ = get_dataloaders_boreas(config)
-
+    elif config['dataset'] == 'medical':
+        train_loader, valid_loader, _ = get_medical_loader(config)
+        is_medical = True
     # print(len(valid_loader))
     # sys.exit()
 
@@ -47,8 +50,10 @@ if __name__ == '__main__':
     #     model = HERO(config).to(config['gpuid'])
 
     ckpt_path = None
-    if os.path.isfile(config['log_dir'] + 'latest.pt'):
-        ckpt_path = config['log_dir'] + 'latest.pt'
+    save_path = Path(config['log_dir'])
+    save_path.mkdir(exist_ok=True)
+    if os.path.isfile(str(save_path / 'latest.pt')):
+        ckpt_path = str(save_path / 'latest.pt')
     elif args.pretrain is not None:
         ckpt_path = args.pretrain
 
@@ -95,6 +100,8 @@ if __name__ == '__main__':
                     batch = augmentBatch(batch, config)
                 elif config['dataset'] == 'nuScenes' and config['model'] == 'UnderTheRadar':
                     batch = augmentBatch(batch, config)
+                elif config['dataset'] == 'medical':
+                    batch = format_medical(batch, config)
             optimizer.zero_grad()
             # try:
             out = model(batch)
@@ -140,7 +147,7 @@ if __name__ == '__main__':
                         }, mname)
                     model.train()
 
-            valid_metric = monitor.step(loss, dict_loss)
+            valid_metric = monitor.step(loss, dict_loss, is_medical=is_medical)
             if valid_metric is not None:
                 scheduler.step(valid_metric)
                 monitor.writer.add_scalar('val/learning_rate', get_lr(optimizer), monitor.counter)

@@ -3,7 +3,7 @@ from time import time
 import numpy as np
 import torch
 from torch.utils.tensorboard import SummaryWriter
-
+from datasets.transforms import format_medical
 from utils.utils import computeMedianError, computeKittiMetrics, get_transform2
 from utils.losses import supervised_loss, unsupervised_loss
 from utils.utils import get_T_ba
@@ -32,7 +32,7 @@ class MonitorBase(object):
         """Returns a list of batch indices which we will use for visualization during validation."""
         return np.linspace(0, len(self.valid_loader.dataset) - 1, self.config['vis_num']).astype(np.int32)
 
-    def step(self, loss, dict_loss):
+    def step(self, loss, dict_loss, is_medical=False):
         """At each step of the monitor, we can print, log, validate, or save model information."""
         self.counter += 1
         self.dt = time() - self.current_time
@@ -54,7 +54,7 @@ class MonitorBase(object):
         if self.counter % self.config['val_rate'] == 0:
             with torch.no_grad():
                 self.model.eval()
-                valid_metric = self.validation()
+                valid_metric = self.validation(is_medical=is_medical)
                 self.model.train()
 
         return valid_metric
@@ -74,7 +74,7 @@ class SVDMonitor(MonitorBase):
         batch_img = draw_batch(batch, out, self.config)
         self.writer.add_image('val/batch_img/{}'.format(batchi), batch_img)
 
-    def validation(self):
+    def validation(self, is_medical=False):
         """This function will compute loss, median errors, KITTI metrics, and draw visualizations."""
         time_used = []
         valid_loss = 0
@@ -86,6 +86,8 @@ class SVDMonitor(MonitorBase):
             ts = time()
             if (batchi + 1) % self.config['print_rate'] == 0:
                 print('Eval Batch {}: {:.2}s'.format(batchi, np.mean(time_used[-self.config['print_rate']:])))
+            if is_medical:
+                batch = format_medical(batch, None)
             with torch.no_grad():
                 out = self.model(batch)
             if batchi in self.vis_batches:
