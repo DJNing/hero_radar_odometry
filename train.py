@@ -6,7 +6,7 @@ import numpy as np
 import sys
 from datasets.oxford import get_dataloaders, get_medical_loader
 from datasets.boreas import get_dataloaders_boreas
-from networks.under_the_radar import UnderTheRadar
+from networks.under_the_radar import UnderTheRadar, UnderTheSuperPoint
 # from networks.hero import HERO
 from utils.utils import get_lr
 from utils.losses import supervised_loss, unsupervised_loss
@@ -46,6 +46,8 @@ if __name__ == '__main__':
 
     if config['model'] == 'UnderTheRadar':
         model = UnderTheRadar(config).to(config['gpuid'])
+    elif config['model'] == 'UnderTheSuperPoint':
+        model = UnderTheSuperPoint(config).to(config['gpuid'])
     # elif config['model'] == 'HERO':
     #     model = HERO(config).to(config['gpuid'])
 
@@ -61,6 +63,8 @@ if __name__ == '__main__':
 
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', patience=2.5e4 / config['val_rate'], factor=0.5)
     if config['model'] == 'UnderTheRadar':
+        monitor = SVDMonitor(model, valid_loader, config)
+    elif config['model'] == 'UnderTheSuperPoint':
         monitor = SVDMonitor(model, valid_loader, config)
     # elif config['model'] == 'HERO':
     #     monitor = SteamMonitor(model, valid_loader, config)
@@ -111,12 +115,17 @@ if __name__ == '__main__':
             #     continue
             if config['model'] == 'UnderTheRadar':
                 loss, dict_loss = supervised_loss(out['R'], out['t'], batch, config)
+            elif config['model'] == 'UnderTheSuperPoint':
+                loss, dict_loss = supervised_loss(out['R'], out['t'], batch, config)
             # elif config['model'] == 'HERO':
             #     loss, dict_loss = unsupervised_loss(out, batch, config, model.solver)
             if loss == 0:
                 print("No movement predicted. Skipping mini-batch.")
                 continue
             if loss.requires_grad:
+                # if loss > 10: # easy sample tunning
+                #     pass
+                # else:
                 loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), 10)
             optimizer.step()

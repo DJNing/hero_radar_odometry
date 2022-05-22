@@ -1,8 +1,9 @@
 {
-    "model": "UnderTheRadar",
+    "model": "UnderTheSuperPoint",
+    "backbone": "SuperPoint_UNet",
     "dataset": "medical",
     "data_dir": "/workspace/data/medical/img/022",
-    "log_dir": "/workspace/data/medical/log/022",
+    "log_dir": "/workspace/data/medical/log/022_SPPUNet",
     "gpuid": "cuda:0",
     "radar_resolution": 0.0438,
     "cart_resolution": 0.25,
